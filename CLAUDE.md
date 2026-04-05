@@ -4,32 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Etsy Assistant is a web application for pen & ink sketch artists that processes sketch photos into print-ready digital downloads and generates optimized Etsy listing metadata using Claude Vision. The shop is "Carrot Sketches."
+Etsy Assistant is a tool for pen & ink sketch artists that processes sketch photos into print-ready digital downloads and generates optimized Etsy listing metadata using Claude Vision. The shop is "Carrot Sketches."
 
-The app has two main parts:
-- **Frontend**: Next.js (App Router) on Vercel — upload UI, before/after preview, size selector
-- **Backend**: FastAPI on AWS Lambda (container image) — image processing pipeline, AI metadata, S3 storage
+It supports two interfaces sharing the same core library:
+- **CLI**: Click-based command-line tool (`uv run etsy-assistant`)
+- **Web**: Next.js frontend (Vercel) + FastAPI backend (AWS Lambda container)
 
 ## Architecture
 
 ```
-[Browser] → [Next.js on Vercel] → [API Gateway] → [FastAPI on Lambda] → [S3 / DynamoDB]
-                                                                        → [Claude API]
-                                                                        → [Etsy API]
+CLI:  etsy-assistant process sketch.jpg -s 8x10
+Web:  [Browser] → [Next.js on Vercel] → [API Gateway] → [FastAPI on Lambda] → [S3]
+                                                                              → [Claude API]
+Both use: src/etsy_assistant/ (shared core package)
 ```
+
+## Shared Core Package (`src/etsy_assistant/`)
+
+The core image processing and Etsy integration code lives in `src/etsy_assistant/`. Both the CLI and web backend import from this package.
+
+- **Do not duplicate** this package into `backend/src/`. The backend imports it via `PYTHONPATH`.
+- The Dockerfile copies from `src/etsy_assistant/` at the repo root.
 
 ## Development Setup
 
-### Backend
+### CLI
+
+```bash
+uv sync --group dev                  # Install all dependencies
+uv run etsy-assistant --help         # Run the CLI
+uv run pytest                        # Run core tests
+```
+
+### Backend (web API)
 
 ```bash
 cd backend
-uv sync --group dev          # Install dependencies
-PYTHONPATH=src uvicorn api.main:app --reload  # Run locally on :8000
-uv run pytest                # Run tests
+uv sync --group dev                                    # Install dependencies
+PYTHONPATH=../src:src uvicorn api.main:app --reload     # Run locally on :8000
+PYTHONPATH=../src:src uv run pytest                     # Run tests
 ```
-
-Requires: Python 3.12+, uv
 
 ### Frontend
 
@@ -40,7 +54,7 @@ npm run dev                  # Run locally on :3000
 npm run build                # Production build
 ```
 
-Requires: Node.js 22+
+Requires: Python 3.12+, uv, Node.js 22+
 
 ### Environment Variables
 
@@ -57,47 +71,41 @@ Frontend (`frontend/.env.local`):
 
 ```
 EstyAssistant/
-├── backend/                           # FastAPI app → Lambda container
-│   ├── Dockerfile
-│   ├── pyproject.toml
-│   ├── src/
-│   │   ├── etsy_assistant/            # Core image processing package
-│   │   │   ├── config.py              # PipelineConfig frozen dataclass
-│   │   │   ├── pipeline.py            # CV pipeline orchestration
-│   │   │   ├── etsy_api.py            # Etsy OAuth + API integration
-│   │   │   ├── steps/                 # Pipeline steps (pure functions)
-│   │   │   │   ├── autocrop.py        # Crop to paper region
-│   │   │   │   ├── perspective.py     # Perspective/rotation correction
-│   │   │   │   ├── background.py      # Paper background cleanup
-│   │   │   │   ├── contrast.py        # Ink contrast enhancement
-│   │   │   │   ├── resize.py          # Print size scaling
-│   │   │   │   ├── output.py          # Image encoding (bytes + file)
-│   │   │   │   ├── keywords.py        # Claude Vision metadata generation
-│   │   │   │   └── mockup.py          # Frame template compositing
-│   │   │   └── templates/             # Frame mockup images + JSON
-│   │   └── api/                       # FastAPI web layer
-│   │       ├── main.py                # App + Mangum Lambda handler
-│   │       ├── models.py              # Pydantic request/response schemas
-│   │       ├── s3.py                  # S3 presigned URL helpers
-│   │       └── routes/
-│   │           ├── upload.py          # GET /upload-url
-│   │           ├── process.py         # POST /process
-│   │           └── listing.py         # POST /listing/generate
-│   └── tests/
+├── src/etsy_assistant/                # SHARED core package (CLI + web)
+│   ├── config.py                      # PipelineConfig frozen dataclass
+│   ├── pipeline.py                    # CV pipeline (file + bytes I/O)
+│   ├── cli.py                         # Click CLI commands
+│   ├── etsy_api.py                    # Etsy OAuth + API integration
+│   └── steps/                         # Pipeline steps (pure functions)
+│       ├── autocrop.py                # Crop to paper region
+│       ├── perspective.py             # Perspective/rotation correction
+│       ├── background.py              # Paper background cleanup
+│       ├── contrast.py                # Ink contrast enhancement
+│       ├── resize.py                  # Print size scaling
+│       ├── output.py                  # Image encoding (bytes + file)
+│       ├── keywords.py                # Claude Vision metadata generation
+│       └── mockup.py                  # Frame template compositing
+├── tests/                             # Core package tests
+├── pyproject.toml                     # CLI project config
+│
+├── backend/                           # FastAPI web layer → Lambda container
+│   ├── Dockerfile                     # Built from repo root
+│   ├── pyproject.toml                 # Web-only dependencies
+│   ├── src/api/                       # FastAPI routes + helpers
+│   │   ├── main.py                    # App + Mangum Lambda handler
+│   │   ├── models.py                  # Pydantic request/response schemas
+│   │   ├── s3.py                      # S3 presigned URL helpers
+│   │   └── routes/
+│   │       ├── upload.py              # GET /upload-url
+│   │       ├── process.py             # POST /process
+│   │       └── listing.py             # POST /listing/generate
+│   └── tests/                         # API + integration tests
+│
 ├── frontend/                          # Next.js app → Vercel
-│   ├── src/
-│   │   ├── app/
-│   │   │   ├── page.tsx               # Main upload + process page
-│   │   │   └── layout.tsx
-│   │   └── lib/
-│   │       └── api.ts                 # Typed backend API client
-│   ├── package.json
-│   └── next.config.ts
-├── infra/
-│   └── template.yaml                 # SAM template (Lambda + S3 + DynamoDB)
-├── src/                               # Original CLI package (preserved)
-├── tests/                             # Original CLI tests
-└── pyproject.toml                     # Original CLI config
+│   ├── src/app/page.tsx               # Main upload + process page
+│   └── src/lib/api.ts                 # Typed backend API client
+│
+└── infra/template.yaml                # SAM template (Lambda + S3 + DynamoDB)
 ```
 
 ## API Endpoints
@@ -128,30 +136,36 @@ Two I/O modes:
 - Supported print sizes: 5x7, 8x10, 11x14, 16x20, A4
 - Default output DPI is 300
 - Browser uploads directly to S3 via presigned URLs (not through the API)
+- The Dockerfile must be built from the **repo root** (not `backend/`) to access `src/`
 
 ## Deployment
 
 ### Backend (AWS Lambda container)
 ```bash
-cd infra
-sam build
-sam deploy --guided
+# Build from repo root
+docker build -f backend/Dockerfile -t etsy-assistant .
+
+# Or via SAM
+cd infra && sam build && sam deploy --guided
 ```
 
 ### Frontend (Vercel)
-Connect the `frontend/` directory to Vercel. Set `NEXT_PUBLIC_API_URL` to the API Gateway URL from SAM output.
+Connect the `frontend/` directory to Vercel. Set `NEXT_PUBLIC_API_URL` to the API Gateway URL.
 
 ## Testing
 
-Backend tests use synthetic images (numpy arrays) via fixtures in `conftest.py`. No real image files or AWS credentials needed for unit tests.
+Tests use synthetic images (numpy arrays) via fixtures in `conftest.py`. No real image files or AWS credentials needed.
 
 ```bash
-cd backend && uv run pytest           # Backend tests
-cd frontend && npm run build           # Frontend type check + build
+uv run pytest                                         # Core tests (from repo root)
+cd backend && PYTHONPATH=../src:src uv run pytest      # Backend tests
+cd frontend && npm run build                           # Frontend type check + build
 ```
 
 ## Dependencies
 
-**Backend**: opencv-python-headless, Pillow, numpy, anthropic, httpx, fastapi, mangum, boto3
+**Core**: opencv-python-headless, Pillow, numpy, click, anthropic, httpx
+
+**Backend (additional)**: fastapi, mangum, boto3, uvicorn
 
 **Frontend**: next, react, tailwindcss, typescript

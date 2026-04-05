@@ -104,6 +104,13 @@ def _encode_image(image_path: Path) -> tuple[str, str]:
     return data, media_type
 
 
+def _encode_image_bytes(raw: bytes, suffix: str = ".png") -> tuple[str, str]:
+    """Base64-encode image bytes. Returns (data, media_type)."""
+    media_type = _detect_media_type(raw, suffix)
+    data = base64.standard_b64encode(raw).decode("utf-8")
+    return data, media_type
+
+
 def _parse_response(text: str) -> dict:
     """Extract JSON from the model response, handling markdown fences."""
     text = text.strip()
@@ -219,3 +226,61 @@ def load_metadata(json_path: Path) -> ListingMetadata:
         tags=data["tags"],
         description=data["description"],
     )
+
+
+def generate_listing_from_bytes(
+    image_bytes: bytes,
+    *,
+    suffix: str = ".png",
+    client: anthropic.Anthropic | None = None,
+    model: str = "claude-sonnet-4-20250514",
+) -> ListingMetadata:
+    """Generate Etsy listing metadata from in-memory image bytes.
+
+    Same as generate_listing() but accepts bytes instead of a file path.
+    """
+    client = client or anthropic.Anthropic()
+    image_data, media_type = _encode_image_bytes(image_bytes, suffix)
+
+    logger.info("Sending image bytes to Claude for listing generation")
+
+    message = client.messages.create(
+        model=model,
+        max_tokens=2048,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": image_data,
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": "Generate an optimized Etsy listing for this pen & ink sketch print.",
+                    },
+                ],
+            }
+        ],
+        system=SYSTEM_PROMPT,
+    )
+
+    response_text = message.content[0].text
+    logger.debug("Raw API response: %s", response_text)
+
+    try:
+        data = _parse_response(response_text)
+    except (json.JSONDecodeError, KeyError) as e:
+        raise ValueError(f"Failed to parse listing metadata from API response: {e}") from e
+
+    title = data["title"][:140]
+    tags = [tag[:20] for tag in data["tags"][:13]]
+    description = data["description"]
+
+    result = ListingMetadata(title=title, tags=tags, description=description)
+    logger.info("Generated listing: %s (%d tags)", title, len(tags))
+    return result
