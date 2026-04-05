@@ -9,10 +9,8 @@ from PIL import Image
 from etsy_assistant.steps.keywords import (
     ListingMetadata,
     _encode_image,
-    _encode_image_bytes,
     _parse_response,
     generate_listing,
-    generate_listing_from_bytes,
     load_metadata,
     save_metadata,
 )
@@ -228,64 +226,3 @@ class TestSaveMetadata:
         loaded = load_metadata(path)
         assert loaded.title == listing.title
         assert loaded.tags == listing.tags
-
-
-class TestEncodeImageBytes:
-    def test_encodes_png_bytes(self, sample_image):
-        raw = sample_image.read_bytes()
-        data, media_type = _encode_image_bytes(raw, ".png")
-        assert media_type == "image/png"
-        assert len(data) > 0
-
-    def test_encodes_jpeg_bytes(self, sample_jpeg):
-        raw = sample_jpeg.read_bytes()
-        data, media_type = _encode_image_bytes(raw, ".jpg")
-        assert media_type == "image/jpeg"
-        assert len(data) > 0
-
-    def test_detects_media_type_from_header(self, sample_image):
-        raw = sample_image.read_bytes()
-        # Even with wrong suffix, PNG header bytes should be detected
-        _, media_type = _encode_image_bytes(raw, ".xyz")
-        assert media_type == "image/png"
-
-
-class TestGenerateListingFromBytes:
-    def test_returns_listing_metadata(self, sample_image, valid_api_response):
-        raw = sample_image.read_bytes()
-        mock_client = MagicMock()
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=valid_api_response)]
-        mock_client.messages.create.return_value = mock_message
-
-        result = generate_listing_from_bytes(raw, client=mock_client)
-
-        assert isinstance(result, ListingMetadata)
-        assert len(result.title) <= 140
-        assert len(result.tags) <= 13
-        assert len(result.description) > 0
-
-    def test_sends_base64_image(self, sample_image, valid_api_response):
-        raw = sample_image.read_bytes()
-        mock_client = MagicMock()
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text=valid_api_response)]
-        mock_client.messages.create.return_value = mock_message
-
-        generate_listing_from_bytes(raw, client=mock_client)
-
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        content = call_kwargs["messages"][0]["content"]
-        assert content[0]["type"] == "image"
-        assert content[0]["source"]["type"] == "base64"
-        assert content[0]["source"]["media_type"] == "image/png"
-
-    def test_raises_on_bad_response(self, sample_image):
-        raw = sample_image.read_bytes()
-        mock_client = MagicMock()
-        mock_message = MagicMock()
-        mock_message.content = [MagicMock(text="not json")]
-        mock_client.messages.create.return_value = mock_message
-
-        with pytest.raises(ValueError, match="Failed to parse"):
-            generate_listing_from_bytes(raw, client=mock_client)

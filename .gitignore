@@ -9,6 +9,16 @@ build/
 output/
 debug/
 .env
+.env.local
 credentials.json
 *.DS_Store
 .claude/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# AWS SAM
+.aws-sam/
+samconfig.toml

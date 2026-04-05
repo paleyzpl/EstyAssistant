@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Etsy Assistant - Image processing backend
+
+Parameters:
+  CorsOrigins:
+    Type: String
+    Default: "http://localhost:3000"
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+Globals:
+  Function:
+    Timeout: 60
+    MemorySize: 1024
+
+Resources:
+  ImageBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "etsy-assistant-images-${AWS::AccountId}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: [GET, PUT]
+            AllowedOrigins: ["*"]
+            MaxAge: 3600
+      LifecycleConfiguration:
+        Rules:
+          - Id: CleanupUploads
+            Prefix: uploads/
+            Status: Enabled
+            ExpirationInDays: 7
+          - Id: CleanupProcessed
+            Prefix: processed/
+            Status: Enabled
+            ExpirationInDays: 30
+
+  CredentialsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: etsy-assistant-credentials
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerTag: latest
+      DockerContext: ../backend
+      Dockerfile: Dockerfile
+    Properties:
+      PackageType: Image
+      Architectures: [x86_64]
+      Environment:
+        Variables:
+          S3_BUCKET: !Ref ImageBucket
+          CORS_ORIGINS: !Ref CorsOrigins
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          DYNAMODB_TABLE: !Ref CredentialsTable
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref ImageBucket
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CredentialsTable
+      Events:
+        Api:
+          Type: HttpApi
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        Root:
+          Type: HttpApi
+          Properties:
+            Path: /
+            Method: ANY
+
+Outputs:
+  ApiUrl:
+    Description: API Gateway URL
+    Value: !Sub "https://${ServerlessHttpApi}.execute-api.${AWS::Region}.amazonaws.com"
+  BucketName:
+    Description: S3 bucket for images
+    Value: !Ref ImageBucket
