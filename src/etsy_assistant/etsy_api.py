@@ -360,3 +360,136 @@ def upload_listing_file(
     file_id = str(result["listing_file_id"])
     logger.info("Uploaded file %s for listing %s", file_id, listing_id)
     return file_id
+
+
+# ── Web-compatible functions (bytes-based, no filesystem) ──
+
+def build_auth_url(api_key: str, redirect_uri: str) -> tuple[str, str, str]:
+    """Build Etsy OAuth authorization URL for web flow.
+
+    Returns (auth_url, state, code_verifier).
+    """
+    verifier, challenge = _generate_pkce()
+    state = secrets.token_urlsafe(16)
+
+    auth_params = urlencode({
+        "response_type": "code",
+        "client_id": api_key,
+        "redirect_uri": redirect_uri,
+        "scope": DEFAULT_SCOPES,
+        "state": state,
+        "code_challenge": challenge,
+        "code_challenge_method": "S256",
+    })
+    auth_url = f"{ETSY_AUTH_URL}?{auth_params}"
+    return auth_url, state, verifier
+
+
+def exchange_code(api_key: str, code: str, verifier: str,
+                  redirect_uri: str) -> EtsyCredentials:
+    """Exchange authorization code for tokens (web callback flow)."""
+    with httpx.Client() as http:
+        resp = http.post(
+            ETSY_TOKEN_URL,
+            data={
+                "grant_type": "authorization_code",
+                "client_id": api_key,
+                "redirect_uri": redirect_uri,
+                "code": code,
+                "code_verifier": verifier,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        resp.raise_for_status()
+        token_data = resp.json()
+
+    access_token = token_data["access_token"]
+    refresh_token_val = token_data["refresh_token"]
+    user_id = access_token.split(".")[0] if "." in access_token else ""
+
+    creds = EtsyCredentials(
+        api_key=api_key,
+        access_token=access_token,
+        refresh_token=refresh_token_val,
+        user_id=user_id,
+    )
+
+    shop_id = _get_shop_id(creds)
+    if shop_id:
+        creds = EtsyCredentials(
+            api_key=creds.api_key,
+            access_token=creds.access_token,
+            refresh_token=creds.refresh_token,
+            user_id=creds.user_id,
+            shop_id=shop_id,
+        )
+    return creds
+
+
+def upload_listing_image_bytes(
+    creds: EtsyCredentials,
+    listing_id: str,
+    image_bytes: bytes,
+    filename: str = "preview.png",
+    content_type: str = "image/png",
+    on_refresh: callable = None,
+) -> str:
+    """Upload a preview image from bytes. Returns listing_image_id."""
+    if not creds.shop_id:
+        raise ValueError("No shop_id in credentials.")
+
+    url = f"{ETSY_API_BASE}/shops/{creds.shop_id}/listings/{listing_id}/images"
+
+    logger.info("Uploading preview image bytes: %s (%.0f KB)", filename, len(image_bytes) / 1024)
+    with httpx.Client() as http:
+        resp = http.request(
+            "POST", url, headers=_api_headers(creds),
+            files={"image": (filename, image_bytes, content_type)},
+        )
+        if resp.status_code == 401 and on_refresh:
+            creds = refresh_access_token(creds)
+            on_refresh(creds)
+            resp = http.request(
+                "POST", url, headers=_api_headers(creds),
+                files={"image": (filename, image_bytes, content_type)},
+            )
+        resp.raise_for_status()
+
+    result = resp.json()
+    return str(result["listing_image_id"])
+
+
+def upload_listing_file_bytes(
+    creds: EtsyCredentials,
+    listing_id: str,
+    file_bytes: bytes,
+    filename: str = "download.png",
+    on_refresh: callable = None,
+) -> str:
+    """Upload a digital download file from bytes. Returns listing_file_id."""
+    if not creds.shop_id:
+        raise ValueError("No shop_id in credentials.")
+
+    size_mb = len(file_bytes) / (1024 * 1024)
+    if size_mb > 20:
+        raise ValueError(f"File too large ({size_mb:.1f} MB). Etsy limit is 20 MB per file.")
+
+    url = f"{ETSY_API_BASE}/shops/{creds.shop_id}/listings/{listing_id}/files"
+
+    logger.info("Uploading digital file bytes: %s (%.1f MB)", filename, size_mb)
+    with httpx.Client() as http:
+        resp = http.request(
+            "POST", url, headers=_api_headers(creds),
+            files={"file": (filename, file_bytes, "application/octet-stream")},
+        )
+        if resp.status_code == 401 and on_refresh:
+            creds = refresh_access_token(creds)
+            on_refresh(creds)
+            resp = http.request(
+                "POST", url, headers=_api_headers(creds),
+                files={"file": (filename, file_bytes, "application/octet-stream")},
+            )
+        resp.raise_for_status()
+
+    result = resp.json()
+    return str(result["listing_file_id"])

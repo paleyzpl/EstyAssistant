@@ -106,3 +106,91 @@ export async function generateMockups(
   }
   return res.json();
 }
+
+// ── Etsy Auth ──
+
+export interface AuthStatus {
+  connected: boolean;
+  shop_id: string | null;
+}
+
+export async function getEtsyAuthStatus(): Promise<AuthStatus> {
+  const res = await fetch(`${API_BASE}/auth/etsy/status`);
+  if (!res.ok) throw new Error("Failed to check Etsy status");
+  return res.json();
+}
+
+export async function startEtsyAuth(): Promise<string> {
+  const callbackUrl = `${window.location.origin}/auth/etsy/callback`;
+  const res = await fetch(
+    `${API_BASE}/auth/etsy/start?redirect_uri=${encodeURIComponent(callbackUrl)}`
+  );
+  if (!res.ok) throw new Error("Failed to start Etsy auth");
+  const data = await res.json();
+  return data.auth_url;
+}
+
+export async function completeEtsyAuth(
+  code: string,
+  state: string
+): Promise<{ success: boolean; shop_id: string | null }> {
+  const res = await fetch(
+    `${API_BASE}/auth/etsy/callback?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
+    { method: "POST" }
+  );
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Etsy auth failed: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function disconnectEtsy(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/etsy/disconnect`, {
+    method: "POST",
+  });
+  if (!res.ok) throw new Error("Failed to disconnect Etsy");
+}
+
+// ── Publish ──
+
+export interface PublishRequest {
+  s3_key: string;
+  sizes: string[];
+  title: string;
+  description: string;
+  tags: string[];
+  price: number;
+}
+
+export interface JobStatus {
+  status: string;
+  result?: {
+    listing_id: string;
+    listing_url: string | null;
+    title: string;
+  };
+  error?: string;
+}
+
+export async function publishListing(
+  req: PublishRequest
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/publish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Publish failed: ${detail}`);
+  }
+  const data = await res.json();
+  return data.job_id;
+}
+
+export async function getJobStatus(jobId: string): Promise<JobStatus> {
+  const res = await fetch(`${API_BASE}/jobs/${jobId}`);
+  if (!res.ok) throw new Error("Failed to get job status");
+  return res.json();
+}

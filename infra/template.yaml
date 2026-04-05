@@ -10,6 +10,13 @@ Parameters:
     Type: String
     NoEcho: true
     Default: ""
+  EtsyApiKey:
+    Type: String
+    NoEcho: true
+    Default: ""
+  FrontendUrl:
+    Type: String
+    Default: "http://localhost:3000"
 
 Globals:
   Function:
@@ -64,6 +71,8 @@ Resources:
           S3_BUCKET: !Ref ImageBucket
           CORS_ORIGINS: !Ref CorsOrigins
           ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ETSY_API_KEY: !Ref EtsyApiKey
+          FRONTEND_URL: !Ref FrontendUrl
           DYNAMODB_TABLE: !Ref CredentialsTable
       Policies:
         - S3CrudPolicy:

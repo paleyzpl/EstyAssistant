@@ -95,14 +95,20 @@ EstyAssistant/
 │   │   ├── main.py                    # App + Mangum Lambda handler
 │   │   ├── models.py                  # Pydantic request/response schemas
 │   │   ├── s3.py                      # S3 presigned URL helpers
+│   │   ├── credentials.py             # DynamoDB credential + job store
 │   │   └── routes/
 │   │       ├── upload.py              # GET /upload-url
 │   │       ├── process.py             # POST /process
-│   │       └── listing.py             # POST /listing/generate
+│   │       ├── listing.py             # POST /listing/generate
+│   │       ├── mockups.py             # POST /mockups/generate
+│   │       ├── auth.py                # Etsy OAuth endpoints
+│   │       └── publish.py             # POST /publish, GET /jobs/{id}
 │   └── tests/                         # API + integration tests
 │
 ├── frontend/                          # Next.js app → Vercel
-│   ├── src/app/page.tsx               # Main upload + process page
+│   ├── src/app/page.tsx               # Main upload + process + publish page
+│   ├── src/app/auth/etsy/callback/    # OAuth callback page
+│   ├── src/components/                # ListingEditor, MockupGallery
 │   └── src/lib/api.ts                 # Typed backend API client
 │
 └── infra/template.yaml                # SAM template (Lambda + S3 + DynamoDB)
@@ -116,6 +122,13 @@ EstyAssistant/
 | `GET` | `/upload-url` | Presigned S3 upload URL |
 | `POST` | `/process` | Run CV pipeline on uploaded image |
 | `POST` | `/listing/generate` | AI metadata via Claude Vision |
+| `POST` | `/mockups/generate` | Frame mockup compositing |
+| `GET` | `/auth/etsy/start` | Begin Etsy OAuth, return redirect URL |
+| `POST` | `/auth/etsy/callback` | Exchange OAuth code for tokens |
+| `GET` | `/auth/etsy/status` | Check if Etsy is connected |
+| `POST` | `/auth/etsy/disconnect` | Disconnect Etsy account |
+| `POST` | `/publish` | Process + create Etsy draft listing |
+| `GET` | `/jobs/{id}` | Poll async job status |
 
 ## Image Processing Pipeline
 
