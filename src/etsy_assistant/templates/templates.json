@@ -1,0 +1,20 @@
+{
+  "blank_frame_1": {
+    "description": "Light wood frame on white wall",
+    "file": "blank_frame_1.jpg",
+    "frame_bbox": [745, 2319, 3014, 5426],
+    "orientation": "vertical"
+  },
+  "anna_nekrashevich": {
+    "description": "Wood frame with candle on white surface",
+    "file": "pexels-anna-nekrashevich-8534228.jpg",
+    "frame_bbox": [1035, 1675, 3062, 4425],
+    "orientation": "vertical"
+  },
+  "komet_flicker": {
+    "description": "Black frame on rattan dresser with plants",
+    "file": "pexels-komet-flicker-1015379201-20541349.jpg",
+    "frame_bbox": [1501, 1221, 2472, 2693],
+    "orientation": "vertical"
+  }
+}

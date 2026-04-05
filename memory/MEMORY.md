@@ -1,0 +1,5 @@
+- [User Profile](user_profile.md) — Etsy seller (Carrot Sketches), pen & ink sketches, digital downloads for home decor
+- [Project Progress](project_phase1_complete.md) — Phases 1-3 built, 53 tests, mockups in progress, Etsy dev account pending
+- [Photo & Processing Prefs](feedback_photo_quality.md) — Outdoor photos best, smooth lines, preserve shadow detail, don't over-sharpen
+- [Listing Style](feedback_listing_style.md) — Carrot Sketches shop, pipe-separated titles, ✦ section headers, 300-400 word descriptions
+- [Workflow Prefs](feedback_workflow.md) — Local only (no git), manual Etsy upload for now, mockups need real photos
