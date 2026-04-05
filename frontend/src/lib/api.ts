@@ -194,3 +194,53 @@ export async function getJobStatus(jobId: string): Promise<JobStatus> {
   if (!res.ok) throw new Error("Failed to get job status");
   return res.json();
 }
+
+// ── Listing History ──
+
+export interface SavedListing {
+  id: string;
+  title: string;
+  tags: string[];
+  description: string;
+  price: number | null;
+  s3_key: string | null;
+  sizes: string[];
+  etsy_listing_id: string | null;
+  etsy_listing_url: string | null;
+  preview_url: string | null;
+  created_at: number;
+}
+
+export async function getListings(limit: number = 50): Promise<SavedListing[]> {
+  const res = await fetch(`${API_BASE}/listings?limit=${limit}`);
+  if (!res.ok) throw new Error("Failed to fetch listings");
+  const data = await res.json();
+  return data.listings;
+}
+
+export async function saveListing(listing: {
+  title: string;
+  tags: string[];
+  description: string;
+  price?: number;
+  s3_key?: string;
+  sizes?: string[];
+  etsy_listing_id?: string;
+  etsy_listing_url?: string;
+  preview_url?: string;
+}): Promise<SavedListing> {
+  const res = await fetch(`${API_BASE}/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(listing),
+  });
+  if (!res.ok) throw new Error("Failed to save listing");
+  return res.json();
+}
+
+export async function deleteListing(listingId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/listings/${listingId}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) throw new Error("Failed to delete listing");
+}

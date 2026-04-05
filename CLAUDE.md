@@ -63,6 +63,9 @@ Backend (`backend/.env`):
 - `AWS_REGION` — AWS region (default: us-east-1)
 - `CORS_ORIGINS` — Comma-separated allowed origins
 - `ANTHROPIC_API_KEY` — For Claude Vision listing generation
+- `ETSY_API_KEY` — Etsy OAuth client ID
+- `FRONTEND_URL` — Frontend URL for OAuth callback (default: http://localhost:3000)
+- `DYNAMODB_TABLE` — DynamoDB table for credentials + jobs
 
 Frontend (`frontend/.env.local`):
 - `NEXT_PUBLIC_API_URL` — Backend URL (default: http://localhost:8000)
@@ -129,6 +132,10 @@ EstyAssistant/
 | `POST` | `/auth/etsy/disconnect` | Disconnect Etsy account |
 | `POST` | `/publish` | Process + create Etsy draft listing |
 | `GET` | `/jobs/{id}` | Poll async job status |
+| `GET` | `/listings` | List saved listings (history) |
+| `GET` | `/listings/{id}` | Get a single saved listing |
+| `POST` | `/listings` | Save a listing to history |
+| `DELETE` | `/listings/{id}` | Delete a saved listing |
 
 ## Image Processing Pipeline
 
