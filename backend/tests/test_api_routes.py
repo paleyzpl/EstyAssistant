@@ -110,6 +110,50 @@ class TestProcessEndpoint:
         assert isinstance(call_args[0][1], bytes)
 
 
+class TestMockupsEndpoint:
+    @patch("api.routes.mockups.write_image")
+    @patch("api.routes.mockups.generate_all_mockups_bytes")
+    @patch("api.routes.mockups.read_image")
+    def test_mockups_success(self, mock_read, mock_gen, mock_write, sketch_png_bytes):
+        mock_read.return_value = sketch_png_bytes
+        mock_gen.return_value = [("blank_frame_1", b"\xff\xd8fake_jpeg")]
+        mock_write.return_value = "https://s3.example.com/mockups/abc/blank_frame_1.jpg"
+
+        resp = client.post("/mockups/generate", json={
+            "s3_key": "processed/abc/8x10.png",
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert len(data["mockups"]) == 1
+        assert data["mockups"][0]["template_name"] == "blank_frame_1"
+        assert data["mockups"][0]["url"].startswith("https://")
+
+    @patch("api.routes.mockups.read_image")
+    def test_mockups_image_not_found(self, mock_read):
+        mock_read.side_effect = Exception("NoSuchKey")
+
+        resp = client.post("/mockups/generate", json={
+            "s3_key": "processed/nonexistent",
+        })
+        assert resp.status_code == 404
+
+    @patch("api.routes.mockups.write_image")
+    @patch("api.routes.mockups.generate_mockup_bytes")
+    @patch("api.routes.mockups.read_image")
+    def test_mockups_specific_templates(self, mock_read, mock_gen, mock_write, sketch_png_bytes):
+        mock_read.return_value = sketch_png_bytes
+        mock_gen.return_value = ("blank_frame_1", b"\xff\xd8fake_jpeg")
+        mock_write.return_value = "https://s3.example.com/out.jpg"
+
+        resp = client.post("/mockups/generate", json={
+            "s3_key": "processed/abc/8x10.png",
+            "template_names": ["blank_frame_1"],
+        })
+        assert resp.status_code == 200
+        assert len(resp.json()["mockups"]) == 1
+        mock_gen.assert_called_once_with(sketch_png_bytes, "blank_frame_1")
+
+
 class TestListingGenerateEndpoint:
     @patch("api.routes.listing.generate_listing_from_bytes")
     @patch("api.routes.listing.read_image")

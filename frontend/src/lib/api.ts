@@ -21,6 +21,15 @@ export interface ListingMetadata {
   description: string;
 }
 
+export interface MockupImage {
+  template_name: string;
+  url: string;
+}
+
+export interface MockupResponse {
+  mockups: MockupImage[];
+}
+
 export async function getUploadUrl(
   contentType: string = "image/jpeg"
 ): Promise<UploadUrlResponse> {
@@ -75,6 +84,25 @@ export async function generateListing(
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(`Listing generation failed: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function generateMockups(
+  s3Key: string,
+  templateNames?: string[]
+): Promise<MockupResponse> {
+  const res = await fetch(`${API_BASE}/mockups/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      s3_key: s3Key,
+      template_names: templateNames,
+    }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Mockup generation failed: ${detail}`);
   }
   return res.json();
 }

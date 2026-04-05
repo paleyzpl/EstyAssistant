@@ -5,21 +5,52 @@ import {
   getUploadUrl,
   uploadToS3,
   processImage,
+  generateListing,
+  generateMockups,
   type ProcessedImage,
+  type ListingMetadata,
+  type MockupImage,
 } from "@/lib/api";
+import ListingEditor from "@/components/ListingEditor";
+import MockupGallery from "@/components/MockupGallery";
 
 const AVAILABLE_SIZES = ["5x7", "8x10", "11x14", "16x20"];
 
-type Status = "idle" | "uploading" | "processing" | "done" | "error";
+type ProcessStatus = "idle" | "uploading" | "processing" | "done" | "error";
+type ListingStatus = "idle" | "generating" | "done" | "error";
+type MockupStatus = "idle" | "generating" | "done" | "error";
 
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
   const [selectedSizes, setSelectedSizes] = useState<string[]>(["8x10"]);
-  const [status, setStatus] = useState<Status>("idle");
+  const [processStatus, setProcessStatus] = useState<ProcessStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [outputs, setOutputs] = useState<ProcessedImage[]>([]);
   const [processedPreview, setProcessedPreview] = useState<string | null>(null);
+  const [s3Key, setS3Key] = useState<string | null>(null);
+  const [processedS3Key, setProcessedS3Key] = useState<string | null>(null);
+
+  // Listing state
+  const [listingStatus, setListingStatus] = useState<ListingStatus>("idle");
+  const [listing, setListing] = useState<ListingMetadata | null>(null);
+
+  // Mockup state
+  const [mockupStatus, setMockupStatus] = useState<MockupStatus>("idle");
+  const [mockups, setMockups] = useState<MockupImage[]>([]);
+
+  const resetAll = () => {
+    setOutputs([]);
+    setProcessedPreview(null);
+    setError(null);
+    setProcessStatus("idle");
+    setS3Key(null);
+    setProcessedS3Key(null);
+    setListing(null);
+    setListingStatus("idle");
+    setMockups([]);
+    setMockupStatus("idle");
+  };
 
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -27,10 +58,7 @@ export default function Home() {
       if (!f) return;
       setFile(f);
       setPreviewSrc(URL.createObjectURL(f));
-      setOutputs([]);
-      setProcessedPreview(null);
-      setError(null);
-      setStatus("idle");
+      resetAll();
     },
     []
   );
@@ -41,10 +69,7 @@ export default function Home() {
     if (!f) return;
     setFile(f);
     setPreviewSrc(URL.createObjectURL(f));
-    setOutputs([]);
-    setProcessedPreview(null);
-    setError(null);
-    setStatus("idle");
+    resetAll();
   }, []);
 
   const toggleSize = (size: string) => {
@@ -58,21 +83,58 @@ export default function Home() {
     setError(null);
 
     try {
-      setStatus("uploading");
+      setProcessStatus("uploading");
       const { upload_url, s3_key } = await getUploadUrl(file.type);
+      setS3Key(s3_key);
       await uploadToS3(upload_url, file);
 
-      setStatus("processing");
+      setProcessStatus("processing");
       const result = await processImage(s3_key, selectedSizes);
 
       setProcessedPreview(result.preview_url);
       setOutputs(result.outputs);
-      setStatus("done");
+      // Use first output's S3 key for listing/mockups
+      if (result.outputs.length > 0) {
+        setProcessedS3Key(s3_key);
+      }
+      setProcessStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
-      setStatus("error");
+      setProcessStatus("error");
     }
   };
+
+  const handleGenerateListing = async () => {
+    if (!s3Key) return;
+    setError(null);
+
+    try {
+      setListingStatus("generating");
+      const result = await generateListing(s3Key);
+      setListing(result);
+      setListingStatus("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Listing generation failed");
+      setListingStatus("error");
+    }
+  };
+
+  const handleGenerateMockups = async () => {
+    if (!s3Key) return;
+    setError(null);
+
+    try {
+      setMockupStatus("generating");
+      const result = await generateMockups(s3Key);
+      setMockups(result.mockups);
+      setMockupStatus("done");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Mockup generation failed");
+      setMockupStatus("error");
+    }
+  };
+
+  const isProcessed = processStatus === "done";
 
   return (
     <main className="max-w-4xl mx-auto px-4 py-8">
@@ -141,12 +203,12 @@ export default function Home() {
       <section className="mb-8">
         <button
           onClick={handleProcess}
-          disabled={!file || status === "uploading" || status === "processing"}
+          disabled={!file || processStatus === "uploading" || processStatus === "processing"}
           className="bg-black text-white px-6 py-3 rounded-lg font-medium disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-800 transition-colors"
         >
-          {status === "uploading"
+          {processStatus === "uploading"
             ? "Uploading..."
-            : status === "processing"
+            : processStatus === "processing"
               ? "Processing..."
               : "Process Sketch"}
         </button>
@@ -154,7 +216,7 @@ export default function Home() {
 
       {/* Error */}
       {error && (
-        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded text-red-700">
+        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded text-red-700 text-sm">
           {error}
         </div>
       )}
@@ -192,7 +254,7 @@ export default function Home() {
 
       {/* Download Links */}
       {outputs.length > 0 && (
-        <section>
+        <section className="mb-8">
           <h2 className="text-lg font-semibold mb-3">Downloads</h2>
           <div className="flex gap-3 flex-wrap">
             {outputs.map((output) => (
@@ -207,6 +269,58 @@ export default function Home() {
               </a>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Post-processing actions */}
+      {isProcessed && (
+        <section className="mb-8">
+          <div className="flex gap-3 flex-wrap">
+            {listingStatus === "idle" && (
+              <button
+                onClick={handleGenerateListing}
+                className="bg-black text-white px-5 py-2.5 rounded-lg font-medium hover:bg-gray-800 transition-colors"
+              >
+                Generate Listing
+              </button>
+            )}
+            {listingStatus === "generating" && (
+              <button disabled className="bg-gray-400 text-white px-5 py-2.5 rounded-lg font-medium">
+                Generating Listing...
+              </button>
+            )}
+
+            {mockupStatus === "idle" && (
+              <button
+                onClick={handleGenerateMockups}
+                className="border border-black text-black px-5 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors"
+              >
+                Generate Mockups
+              </button>
+            )}
+            {mockupStatus === "generating" && (
+              <button disabled className="border border-gray-300 text-gray-400 px-5 py-2.5 rounded-lg font-medium">
+                Generating Mockups...
+              </button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {/* Listing Editor */}
+      {listing && (
+        <section className="mb-8">
+          <ListingEditor initial={listing} onChange={setListing} />
+        </section>
+      )}
+
+      {/* Mockup Gallery */}
+      {(mockupStatus === "generating" || mockups.length > 0) && (
+        <section className="mb-8">
+          <MockupGallery
+            mockups={mockups}
+            loading={mockupStatus === "generating"}
+          />
         </section>
       )}
     </main>

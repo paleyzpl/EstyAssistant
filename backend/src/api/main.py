@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
 from api.models import HealthResponse
-from api.routes import listing, process, upload
+from api.routes import listing, mockups, process, upload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +36,7 @@ app.add_middleware(
 app.include_router(upload.router, tags=["upload"])
 app.include_router(process.router, tags=["process"])
 app.include_router(listing.router, tags=["listing"])
+app.include_router(mockups.router, tags=["mockups"])
 
 
 @app.get("/health", response_model=HealthResponse)

@@ -35,3 +35,17 @@ class ListingMetadataResponse(BaseModel):
     title: str
     tags: list[str]
     description: str
+
+
+class MockupGenerateRequest(BaseModel):
+    s3_key: str
+    template_names: list[str] | None = None
+
+
+class MockupImage(BaseModel):
+    template_name: str
+    url: str
+
+
+class MockupGenerateResponse(BaseModel):
+    mockups: list[MockupImage]

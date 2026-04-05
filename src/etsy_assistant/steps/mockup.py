@@ -1,3 +1,4 @@
+import io
 import json
 import logging
 from pathlib import Path
@@ -199,5 +200,111 @@ def generate_all_mockups(
         out_path = output_dir / f"{art_path.stem}_mockup_{name}.jpg"
         path = generate_mockup(art_path, name, out_path)
         results.append(path)
+
+    return results
+
+
+def _art_orientation_from_bytes(image_bytes: bytes) -> str:
+    """Return 'vertical' if portrait, 'horizontal' if landscape."""
+    img = Image.open(io.BytesIO(image_bytes))
+    return "vertical" if img.height >= img.width else "horizontal"
+
+
+def generate_mockup_bytes(
+    art_bytes: bytes,
+    template_name: str | None = None,
+) -> tuple[str, bytes]:
+    """Composite a sketch into a frame template, returning JPEG bytes.
+
+    Args:
+        art_bytes: Processed sketch image bytes (PNG/JPEG).
+        template_name: Template key from templates.json. If None, uses first available.
+
+    Returns:
+        Tuple of (template_name, jpeg_bytes).
+
+    Raises:
+        ValueError: If template not found or orientation mismatch.
+    """
+    templates = _load_templates()
+
+    if template_name is None:
+        template_name = next(iter(templates))
+
+    if template_name not in templates:
+        available = ", ".join(templates.keys())
+        raise ValueError(f"Unknown template '{template_name}'. Available: {available}")
+
+    meta = templates[template_name]
+    art_orient = _art_orientation_from_bytes(art_bytes)
+    tmpl_orient = meta.get("orientation")
+    if tmpl_orient and tmpl_orient != art_orient:
+        raise ValueError(
+            f"Template '{template_name}' is {tmpl_orient}-only, "
+            f"but artwork is {art_orient}"
+        )
+
+    template_file = TEMPLATE_DIR / meta["file"]
+    template_img = Image.open(template_file).convert("RGB")
+
+    if "frame_bbox" in meta and meta["frame_bbox"]:
+        x1, y1, x2, y2 = meta["frame_bbox"]
+    else:
+        x1, y1, x2, y2 = _detect_frame_interior(template_file)
+
+    frame_w = x2 - x1
+    frame_h = y2 - y1
+
+    art = Image.open(io.BytesIO(art_bytes)).convert("RGB")
+    art_ratio = art.width / art.height
+    frame_ratio = frame_w / frame_h
+
+    if art_ratio > frame_ratio:
+        new_h = frame_h
+        new_w = int(new_h * art_ratio)
+    else:
+        new_w = frame_w
+        new_h = int(new_w / art_ratio)
+
+    art_resized = art.resize((new_w, new_h), Image.LANCZOS)
+
+    crop_x = (new_w - frame_w) // 2
+    crop_y = (new_h - frame_h) // 2
+    art_cropped = art_resized.crop((crop_x, crop_y, crop_x + frame_w, crop_y + frame_h))
+
+    result = template_img.copy()
+    result.paste(art_cropped, (x1, y1))
+
+    buf = io.BytesIO()
+    result.save(buf, "JPEG", quality=92)
+    data = buf.getvalue()
+
+    logger.info("Created mockup bytes: %s (%.0f KB)", template_name, len(data) / 1024)
+    return template_name, data
+
+
+def generate_all_mockups_bytes(
+    art_bytes: bytes,
+) -> list[tuple[str, bytes]]:
+    """Generate mockups for all matching templates, returning JPEG bytes.
+
+    Skips templates whose orientation doesn't match the artwork.
+    Returns list of (template_name, jpeg_bytes) tuples.
+    """
+    templates = _load_templates()
+    art_orient = _art_orientation_from_bytes(art_bytes)
+    results = []
+
+    for name, meta in templates.items():
+        tmpl_orient = meta.get("orientation")
+        if tmpl_orient and tmpl_orient != art_orient:
+            logger.info("Skipping template '%s' (%s-only, artwork is %s)",
+                        name, tmpl_orient, art_orient)
+            continue
+        try:
+            _, data = generate_mockup_bytes(art_bytes, name)
+            results.append((name, data))
+        except Exception:
+            logger.exception("Mockup generation failed for template '%s'", name)
 
     return results
