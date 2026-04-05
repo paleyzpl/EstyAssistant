@@ -12,14 +12,17 @@ import {
   disconnectEtsy,
   publishListing,
   getJobStatus,
+  saveListing as saveListingApi,
   type ProcessedImage,
   type ListingMetadata,
   type MockupImage,
   type AuthStatus,
   type JobStatus,
+  type SavedListing,
 } from "@/lib/api";
 import ListingEditor from "@/components/ListingEditor";
 import MockupGallery from "@/components/MockupGallery";
+import ListingHistory from "@/components/ListingHistory";
 
 const AVAILABLE_SIZES = ["5x7", "8x10", "11x14", "16x20"];
 
@@ -53,6 +56,10 @@ export default function Home() {
   const [publishStatus, setPublishStatus] = useState<PublishStatus>("idle");
   const [publishResult, setPublishResult] = useState<JobStatus["result"] | null>(null);
   const [price, setPrice] = useState("4.99");
+
+  // History state
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
 
   // Check Etsy connection on load
   useEffect(() => {
@@ -202,6 +209,39 @@ export default function Home() {
       setError(err instanceof Error ? err.message : "Publish failed");
       setPublishStatus("error");
     }
+  };
+
+  const handleSaveListing = async () => {
+    if (!listing) return;
+    setSaveStatus("saving");
+    try {
+      await saveListingApi({
+        title: listing.title,
+        tags: listing.tags,
+        description: listing.description,
+        price: price ? parseFloat(price) : undefined,
+        s3_key: s3Key || undefined,
+        sizes: selectedSizes,
+        preview_url: processedPreview || undefined,
+      });
+      setSaveStatus("saved");
+      setHistoryRefreshKey((k) => k + 1);
+      setTimeout(() => setSaveStatus("idle"), 2000);
+    } catch {
+      setSaveStatus("idle");
+    }
+  };
+
+  const handleLoadListing = (saved: SavedListing) => {
+    setListing({
+      title: saved.title,
+      tags: saved.tags,
+      description: saved.description,
+    });
+    setListingStatus("done");
+    if (saved.price != null) setPrice(saved.price.toFixed(2));
+    if (saved.s3_key) setS3Key(saved.s3_key);
+    if (saved.sizes.length > 0) setSelectedSizes(saved.sizes);
   };
 
   const isProcessed = processStatus === "done";
@@ -399,6 +439,19 @@ export default function Home() {
       {listing && (
         <section className="mb-8">
           <ListingEditor initial={listing} onChange={setListing} />
+          <div className="mt-3">
+            <button
+              onClick={handleSaveListing}
+              disabled={saveStatus === "saving"}
+              className="text-sm px-4 py-2 border rounded hover:bg-gray-50 transition-colors disabled:opacity-40"
+            >
+              {saveStatus === "saving"
+                ? "Saving..."
+                : saveStatus === "saved"
+                  ? "Saved!"
+                  : "Save to History"}
+            </button>
+          </div>
         </section>
       )}
 
@@ -482,6 +535,11 @@ export default function Home() {
           </button>
         </section>
       )}
+
+      {/* Listing History */}
+      <section className="mb-8">
+        <ListingHistory onLoad={handleLoadListing} refreshKey={historyRefreshKey} />
+      </section>
     </main>
   );
 }

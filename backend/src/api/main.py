@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 
 from api.models import HealthResponse
-from api.routes import auth, listing, mockups, process, publish, upload
+from api.routes import auth, listing, listings, mockups, process, publish, upload
 
 logging.basicConfig(
     level=logging.INFO,
@@ -39,6 +39,7 @@ app.include_router(listing.router, tags=["listing"])
 app.include_router(mockups.router, tags=["mockups"])
 app.include_router(auth.router, tags=["auth"])
 app.include_router(publish.router, tags=["publish"])
+app.include_router(listings.router, tags=["listings"])
 
 
 @app.get("/health", response_model=HealthResponse)
