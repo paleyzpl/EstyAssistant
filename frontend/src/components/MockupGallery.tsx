@@ -11,8 +11,17 @@ export default function MockupGallery({ mockups, loading }: Props) {
   if (loading) {
     return (
       <div>
-        <h2 className="text-lg font-semibold mb-3">Mockups</h2>
-        <p className="text-gray-500 text-sm">Generating mockups...</p>
+        <h2 className="text-base sm:text-lg font-semibold mb-3">Frame Mockups</h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="border rounded overflow-hidden animate-pulse">
+              <div className="bg-gray-200 aspect-[3/4]"></div>
+              <div className="px-3 py-2">
+                <div className="h-3 bg-gray-200 rounded w-24"></div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -21,8 +30,8 @@ export default function MockupGallery({ mockups, loading }: Props) {
 
   return (
     <div>
-      <h2 className="text-lg font-semibold mb-3">Frame Mockups</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <h2 className="text-base sm:text-lg font-semibold mb-3">Frame Mockups</h2>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
         {mockups.map((m) => (
           <div key={m.template_name} className="border rounded overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
