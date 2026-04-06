@@ -56,6 +56,9 @@ Resources:
       KeySchema:
         - AttributeName: pk
           KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
 
   ApiFunction:
     Type: AWS::Serverless::Function

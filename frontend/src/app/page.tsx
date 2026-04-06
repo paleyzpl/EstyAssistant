@@ -28,6 +28,9 @@ import TemplateManager from "@/components/TemplateManager";
 import DarkModeToggle from "@/components/DarkModeToggle";
 import BundleGenerator from "@/components/BundleGenerator";
 import AnalyticsDashboard from "@/components/AnalyticsDashboard";
+import ImageCompare from "@/components/ImageCompare";
+import SeoScore from "@/components/SeoScore";
+import KeyboardShortcuts from "@/components/KeyboardShortcuts";
 
 const AVAILABLE_SIZES = ["5x7", "8x10", "11x14", "16x20"];
 
@@ -346,6 +349,11 @@ export default function Home() {
     <main className="max-w-4xl mx-auto px-4 py-6 sm:py-8">
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      <KeyboardShortcuts
+        onProcess={files.length > 0 ? handleProcess : undefined}
+        onSave={listing ? handleSaveListing : undefined}
+        onGenerateListing={s3Key ? handleGenerateListing : undefined}
+      />
 
       <header className="mb-6 sm:mb-8 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
@@ -476,22 +484,26 @@ export default function Home() {
       {(currentPreview || processedPreview) && (
         <section className="mb-6 sm:mb-8">
           <h2 className="text-base sm:text-lg font-semibold mb-3 sm:mb-4">Preview</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            {currentPreview && (
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500 mb-1.5">Original</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={currentPreview} alt="Original sketch" className="w-full rounded border" />
-              </div>
-            )}
-            {processedPreview && (
-              <div>
-                <p className="text-xs sm:text-sm text-gray-500 mb-1.5">Processed</p>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={processedPreview} alt="Processed sketch" className="w-full rounded border" />
-              </div>
-            )}
-          </div>
+          {currentPreview && processedPreview ? (
+            <ImageCompare beforeSrc={currentPreview} afterSrc={processedPreview} />
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {currentPreview && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1.5">Original</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={currentPreview} alt="Original sketch" className="w-full rounded border" />
+                </div>
+              )}
+              {processedPreview && (
+                <div>
+                  <p className="text-xs sm:text-sm text-gray-500 mb-1.5">Processed</p>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={processedPreview} alt="Processed sketch" className="w-full rounded border" />
+                </div>
+              )}
+            </div>
+          )}
         </section>
       )}
 
@@ -556,6 +568,9 @@ export default function Home() {
       {listing && (
         <section className="mb-6 sm:mb-8">
           <ListingEditor initial={listing} onChange={setListing} />
+          <div className="mt-4">
+            <SeoScore listing={listing} />
+          </div>
           <div className="mt-3">
             <button
               onClick={handleSaveListing}
