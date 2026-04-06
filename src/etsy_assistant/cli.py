@@ -404,3 +404,42 @@ def publish(input_path, price, taxonomy_id, output_path, sizes, dpi,
     if draft.url:
         click.echo(f"\nListing URL: {draft.url}")
     click.echo(f"\nDraft listing {draft.listing_id} is ready for review on Etsy!")
+
+
+@main.command("generate-bundles")
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, path_type=Path))
+@click.option("--config", "config_path", type=click.Path(exists=True, path_type=Path), default=None,
+              help="Manual grouping config JSON file.")
+@click.option("--csv", "csv_path", type=click.Path(exists=True, path_type=Path), default=None,
+              help="Etsy listing export CSV for grouping hints.")
+@click.option("--ai-grouping/--no-ai-grouping", default=False,
+              help="Use Claude AI for intelligent grouping.")
+@click.option("--ai-description/--no-ai-description", default=False,
+              help="Use Claude AI for bundle descriptions.")
+@click.option("-p", "--price", type=float, default=4.99,
+              help="Default individual price for discount calculation.")
+@click.option("-v", "--verbose", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+def generate_bundles_cmd(directory, config_path, csv_path,
+                         ai_grouping, ai_description, price, verbose, quiet):
+    """Generate 3-pack and 5-pack bundle listings from individual listing JSONs."""
+    _setup_logging(verbose, quiet)
+
+    from etsy_assistant.bundles import generate_bundles
+
+    output_paths = generate_bundles(
+        directory=directory,
+        config_path=config_path,
+        csv_path=csv_path,
+        use_ai_grouping=ai_grouping,
+        use_ai_description=ai_description,
+        individual_price=price,
+    )
+
+    if not output_paths:
+        click.echo("No bundles generated. Need at least 3 listing JSONs with overlapping tags.", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"\nGenerated {len(output_paths)} bundle(s):")
+    for path in output_paths:
+        click.echo(f"  {path.name}")
