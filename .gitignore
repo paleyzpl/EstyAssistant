@@ -22,4 +22,3 @@ frontend/out/
 # AWS SAM
 .aws-sam/
 samconfig.toml
-data/
