@@ -17,6 +17,10 @@ Parameters:
   FrontendUrl:
     Type: String
     Default: "http://localhost:3000"
+  AlarmEmail:
+    Type: String
+    Default: ""
+    Description: Email for CloudWatch alarm notifications (leave empty to skip)
 
 Globals:
   Function:
@@ -93,6 +97,113 @@ Resources:
           Properties:
             Path: /
             Method: ANY
+
+  # ── CloudWatch Alarms ──
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Condition: HasAlarmEmail
+    Properties:
+      TopicName: etsy-assistant-alarms
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref AlarmEmail
+
+  LambdaErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: etsy-assistant-lambda-errors
+      AlarmDescription: Triggers when Lambda errors exceed 5 in 5 minutes
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlarmEmail, !Ref AlarmTopic, !Ref "AWS::NoValue"]
+
+  LambdaThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: etsy-assistant-lambda-throttles
+      AlarmDescription: Triggers when Lambda throttles exceed 3 in 5 minutes
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlarmEmail, !Ref AlarmTopic, !Ref "AWS::NoValue"]
+
+  LambdaDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: etsy-assistant-lambda-slow
+      AlarmDescription: Triggers when average Lambda duration exceeds 30 seconds
+      Namespace: AWS/Lambda
+      MetricName: Duration
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 30000
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlarmEmail, !Ref AlarmTopic, !Ref "AWS::NoValue"]
+
+  ApiGateway4xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: etsy-assistant-api-4xx
+      AlarmDescription: Triggers when API 4xx errors exceed 20 in 5 minutes
+      Namespace: AWS/ApiGateway
+      MetricName: 4xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref ServerlessHttpApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+
+  ApiGateway5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: etsy-assistant-api-5xx
+      AlarmDescription: Triggers when API 5xx errors exceed 3 in 5 minutes
+      Namespace: AWS/ApiGateway
+      MetricName: 5xx
+      Dimensions:
+        - Name: ApiId
+          Value: !Ref ServerlessHttpApi
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions:
+        - !If [HasAlarmEmail, !Ref AlarmTopic, !Ref "AWS::NoValue"]
+
+Conditions:
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
 
 Outputs:
   ApiUrl:

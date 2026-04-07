@@ -111,11 +111,13 @@ def load_etsy_csv(csv_path: Path) -> list[dict]:
     with open(csv_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
+            # Etsy exports use UPPER CASE column names
+            lrow = {k.lower(): v for k, v in row.items()}
             results.append({
-                "title": row.get("Title", row.get("title", "")),
-                "tags": row.get("Tags", row.get("tags", "")),
-                "price": row.get("Price", row.get("price", "")),
-                "url": row.get("URL", row.get("url", "")),
+                "title": lrow.get("title", ""),
+                "tags": lrow.get("tags", ""),
+                "price": lrow.get("price", ""),
+                "url": lrow.get("url", ""),
             })
     return results
 

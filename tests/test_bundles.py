@@ -13,6 +13,7 @@ from etsy_assistant.bundles import (
     generate_bundle_title,
     generate_bundles,
     group_by_tags,
+    load_etsy_csv,
     load_listing_jsons,
     merge_tags,
 )
@@ -184,3 +185,26 @@ class TestGenerateBundles:
     def test_empty_directory(self, tmp_path):
         paths = generate_bundles(tmp_path)
         assert paths == []
+
+
+class TestLoadEtsyCsv:
+    def test_loads_sample_csv(self):
+        csv_path = Path(__file__).parent.parent / "data" / "sample_listings.csv"
+        if not csv_path.exists():
+            pytest.skip("Sample CSV not found")
+        results = load_etsy_csv(csv_path)
+        assert len(results) == 14
+        assert results[0]["title"].startswith("Harbor Lighthouse")
+        assert "2.99" in results[0]["price"]
+
+    def test_loads_custom_csv(self, tmp_path):
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text(
+            'TITLE,TAGS,PRICE,URL\n'
+            '"Sketch A","tag1,tag2","4.99","https://etsy.com/1"\n'
+            '"Sketch B","tag3,tag4","3.99","https://etsy.com/2"\n'
+        )
+        results = load_etsy_csv(csv_file)
+        assert len(results) == 2
+        assert results[0]["title"] == "Sketch A"
+        assert results[1]["tags"] == "tag3,tag4"
