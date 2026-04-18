@@ -1,15 +1,135 @@
 # Deployment Guide
 
-This guide walks you through deploying Etsy Assistant from scratch — AWS account creation through to a running app.
+Two deployment paths are supported:
 
-**Estimated time**: 30-45 minutes
-**Estimated cost**: ~$1-5/month (mostly within free tier)
+- **[Free & Privacy-First](#path-a-free--privacy-first)** — Fly.io + Supabase + Vercel, zero AWS, no credit card required
+- **[AWS](#path-b-aws)** — Lambda + S3 + DynamoDB, ~$1-5/month, slightly more robust
+
+If you're not sure, use **Path A**.
 
 ---
 
-## Prerequisites
+## Path A: Free & Privacy-First
 
-You need these tools installed on your **local machine** (not this remote session):
+**Stack**: Vercel (frontend) + Fly.io (backend) + Supabase (DB + storage)
+**Cost**: $0/month forever (within free tiers)
+**Time**: ~25 minutes
+
+### Step 1: Email + GitHub
+
+1. Create a dedicated ProtonMail: https://proton.me/mail (free)
+2. Create a new GitHub account with that email
+3. Fork `paleyzpl/EstyAssistant` into the new GitHub account (or transfer the repo)
+
+### Step 2: Supabase (DB + storage) — 5 min
+
+1. Go to https://supabase.com → Sign up with your ProtonMail
+2. Create a new project (any name). Save the database password.
+3. Once the project is ready, grab these values:
+   - **Project URL**: Settings → General → Project URL (e.g. `https://abc.supabase.co`)
+   - **DB connection string**: Settings → Database → Connection string → **Session mode** (looks like `postgresql://postgres.xxx:[email protected]:5432/postgres`)
+   - **S3 credentials**: Settings → Storage → S3 Connection → Generate new keys. Copy **Access Key ID** and **Secret Access Key**.
+4. Create a storage bucket:
+   - Storage → New bucket → name: `etsy-assistant-images` → Public: **off**
+
+### Step 3: Fly.io (backend) — 5 min
+
+1. Sign up: https://fly.io/app/sign-up
+2. Add a payment method (free tier won't charge, but they require one on file). Use Privacy.com or Revolut virtual card with a $5/month limit.
+3. Install the CLI:
+   ```bash
+   curl -L https://fly.io/install.sh | sh
+   ```
+4. Log in:
+   ```bash
+   flyctl auth login
+   ```
+
+### Step 4: Anthropic API — 2 min
+
+1. Go to https://console.anthropic.com
+2. Sign up → Create API key
+3. Save the key (starts with `sk-ant-...`)
+
+### Step 5: Etsy API (optional, for publishing) — 2 min
+
+1. Go to https://www.etsy.com/developers
+2. Create an app → get the API key (keystring)
+
+### Step 6: Deploy Backend — 1 command
+
+```bash
+git clone https://github.com/YOUR_USERNAME/EstyAssistant.git
+cd EstyAssistant
+./scripts/setup-free.sh
+```
+
+The script will prompt for:
+- Supabase project URL
+- Supabase database URL
+- Supabase S3 credentials
+- Anthropic API key
+- Etsy API key (optional)
+
+It then:
+1. Creates a Fly.io app
+2. Sets all secrets
+3. Deploys the backend container
+4. Prints the API URL (e.g. `https://etsy-assistant-xyz.fly.dev`)
+
+### Step 7: Deploy Frontend to Vercel — 3 min
+
+1. Go to https://vercel.com → Sign in with your new GitHub account
+2. Add New Project → import `YOUR_USERNAME/EstyAssistant`
+3. Configure:
+   - **Root Directory**: `frontend`
+   - **Framework Preset**: Next.js (auto-detected)
+   - **Environment Variables**: `NEXT_PUBLIC_API_URL` = `https://etsy-assistant-xyz.fly.dev` (from Step 6)
+4. Deploy
+
+### Step 8: Update Backend CORS
+
+Once you have your Vercel URL (e.g. `https://etsy-assistant-xyz.vercel.app`):
+
+```bash
+flyctl secrets set -a YOUR_FLY_APP_NAME \
+    CORS_ORIGINS="https://etsy-assistant-xyz.vercel.app,http://localhost:3000"
+```
+
+### Step 9: Test End-to-End
+
+1. Visit your Vercel URL
+2. Drop a sketch, pick sizes, click Process
+3. You should see before/after preview
+
+### Auto-Deploy on Push (optional)
+
+1. Get a Fly API token: `flyctl tokens create deploy`
+2. In your GitHub repo → Settings → Secrets → Actions → New secret
+   - Name: `FLY_API_TOKEN`
+   - Value: (the token from flyctl)
+3. Edit `.github/workflows/deploy.yml` and change `if: ${{ false }}` to `if: ${{ true }}`
+4. Every push to main now auto-deploys backend to Fly, frontend to Vercel
+
+### Costs Summary (Path A)
+
+| Service | Free Tier | Cost |
+|---------|-----------|------|
+| Vercel Hobby | Unlimited personal projects | $0 |
+| Fly.io | 3 shared VMs, 3GB storage | $0 |
+| Supabase | 500MB DB, 1GB storage, 2GB egress | $0 |
+| Anthropic API | Pay-per-use | ~$0.05-0.10/image |
+| **Total** | | **$0-5/month** (dominated by Anthropic usage) |
+
+---
+
+## Path B: AWS
+
+**Stack**: Vercel (frontend) + AWS Lambda (backend) + S3 + DynamoDB
+**Cost**: ~$1-5/month after first year (AWS free tier)
+**Time**: ~45 minutes (includes AWS account setup)
+
+### Prerequisites (local machine)
 
 1. **AWS CLI v2**: https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html
 2. **AWS SAM CLI**: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/install-sam-cli.html
@@ -17,233 +137,135 @@ You need these tools installed on your **local machine** (not this remote sessio
 4. **Node.js 22+**: https://nodejs.org/
 5. **Git**: to clone the repo
 
----
+### Step 1: AWS Account Setup
 
-## Step 1: Create an AWS Account
-
-1. Go to https://aws.amazon.com/ and click **Create an AWS Account**
-2. Enter your email, choose a root account name, verify email
-3. Enter payment info (required, but free tier covers almost everything)
-4. Choose the **Basic (Free)** support plan
-5. Wait for account activation (usually instant, sometimes up to 24 hours)
-
----
-
-## Step 2: Create an IAM User for Deployment
-
-Don't use your root account for deployment. Create a dedicated IAM user:
-
-1. Go to **IAM Console**: https://console.aws.amazon.com/iam/
-2. Click **Users** → **Create user**
-3. Name: `etsy-assistant-deploy`
-4. Check **Provide user access to the AWS Management Console** (optional)
-5. Click **Next** → **Attach policies directly**
-6. Attach these policies:
+1. Sign up at https://aws.amazon.com/
+2. Create an IAM user `etsy-assistant-deploy` with policies:
    - `AmazonS3FullAccess`
    - `AmazonDynamoDBFullAccess`
    - `AWSLambda_FullAccess`
    - `AmazonAPIGatewayAdministrator`
    - `AmazonEC2ContainerRegistryFullAccess`
    - `AWSCloudFormationFullAccess`
-   - `IAMFullAccess` (needed for SAM to create Lambda execution roles)
-7. Click **Create user**
-8. Go to the user → **Security credentials** → **Create access key**
-9. Choose **Command Line Interface (CLI)**
-10. Save the **Access Key ID** and **Secret Access Key**
+   - `IAMFullAccess`
+3. Generate access keys for the IAM user
+4. Run `aws configure` to set them
 
----
+### Step 2: Anthropic API Key
 
-## Step 3: Configure AWS CLI
+1. https://console.anthropic.com → Create Key
+2. Save as `sk-ant-...`
 
-```bash
-aws configure
-```
-
-Enter:
-- **AWS Access Key ID**: from step 2
-- **AWS Secret Access Key**: from step 2
-- **Default region**: `us-east-1` (recommended)
-- **Output format**: `json`
-
-Verify it works:
-```bash
-aws sts get-caller-identity
-```
-
----
-
-## Step 4: Get an Anthropic API Key
-
-The listing generation feature uses Claude Vision. Get an API key:
-
-1. Go to https://console.anthropic.com/
-2. Sign up or log in
-3. Go to **API Keys** → **Create Key**
-4. Save the key (starts with `sk-ant-...`)
-
----
-
-## Step 5: Deploy the Backend
-
-Clone the repo and run the deploy script:
+### Step 3: Deploy Backend
 
 ```bash
 git clone https://github.com/paleyzpl/EstyAssistant.git
 cd EstyAssistant
-
-# Set your Anthropic API key
 export ANTHROPIC_API_KEY="sk-ant-..."
-
-# Set the frontend URL (update after Vercel deploy)
-export CORS_ORIGINS="http://localhost:3000"
-
-# Deploy!
 ./scripts/deploy-backend.sh
 ```
 
-The script will:
-1. Create an ECR repository for the Docker image
-2. Build the Docker image with OpenCV + FastAPI
-3. Push to ECR
-4. Deploy via SAM (Lambda + API Gateway + S3 + DynamoDB)
+Prints the API URL at the end.
 
-At the end, you'll see:
-```
-  API URL:    https://abc123.execute-api.us-east-1.amazonaws.com
-  S3 Bucket:  etsy-assistant-images-123456789012
-```
+### Step 4: Deploy Frontend to Vercel
 
-**Save the API URL** — you'll need it for the frontend.
+Same as Path A Step 7.
 
-### Verify the backend
-
-```bash
-curl https://abc123.execute-api.us-east-1.amazonaws.com/health
-# Should return: {"status":"ok"}
-```
-
----
-
-## Step 6: Deploy the Frontend to Vercel
-
-1. Go to https://vercel.com/ and sign up with your GitHub account
-2. Click **Add New Project**
-3. Import the `paleyzpl/EstyAssistant` repository
-4. Configure:
-   - **Framework Preset**: Next.js (auto-detected)
-   - **Root Directory**: `frontend` (click "Edit" and type `frontend`)
-   - **Environment Variables**: Add:
-     - `NEXT_PUBLIC_API_URL` = `https://abc123.execute-api.us-east-1.amazonaws.com` (your API URL from step 5)
-5. Click **Deploy**
-
-Vercel will build and deploy. You'll get a URL like `https://etsy-assistant-xyz.vercel.app`.
-
----
-
-## Step 7: Update CORS
-
-Now that you have the Vercel URL, update the backend to allow it:
+### Step 5: Update CORS and Redeploy
 
 ```bash
 export CORS_ORIGINS="https://etsy-assistant-xyz.vercel.app,http://localhost:3000"
-export ANTHROPIC_API_KEY="sk-ant-..."
 ./scripts/deploy-backend.sh
 ```
 
----
+### Costs (Path B)
 
-## Step 8: Test End-to-End
-
-1. Open your Vercel URL in a browser
-2. Drop a sketch photo into the upload area
-3. Select print sizes (e.g., 8x10)
-4. Click **Process Sketch**
-5. You should see before/after preview and download links
+| Service | Free Tier | After Free Tier |
+|---------|-----------|----------------|
+| Lambda | 1M requests + 400K GB-s | ~$0 at low volume |
+| API Gateway | 1M calls (12 months) | ~$0 |
+| S3 | 5 GB (12 months) | ~$0.50/month |
+| DynamoDB | 25 GB + 25 RCU/WCU | ~$0 |
+| ECR | 500 MB | ~$0 |
+| **Total** | | **$1-5/month** |
 
 ---
 
 ## Local Development
 
-You can still run everything locally for development:
+Both paths support local development via `uvicorn`:
 
 ```bash
-# Terminal 1: Backend (port 8000)
+# Backend (port 8000) — pick your backend env vars
 cd backend
 uv sync --group dev
-PYTHONPATH=../src:src S3_BUCKET=your-bucket AWS_REGION=us-east-1 \
-    uvicorn api.main:app --reload
 
-# Terminal 2: Frontend (port 3000)
+# For Path A (Supabase local):
+export STORAGE_BACKEND=supabase DB_BACKEND=supabase
+export SUPABASE_URL="..." SUPABASE_DB_URL="..." SUPABASE_S3_ACCESS_KEY_ID="..." SUPABASE_S3_SECRET_ACCESS_KEY="..."
+export S3_BUCKET="etsy-assistant-images" ANTHROPIC_API_KEY="sk-ant-..."
+
+# For Path B (AWS local):
+export S3_BUCKET="your-bucket" AWS_REGION="us-east-1" ANTHROPIC_API_KEY="sk-ant-..."
+
+PYTHONPATH=../src:src uvicorn api.main:app --reload
+```
+
+```bash
+# Frontend (port 3000)
 cd frontend
 npm install
 NEXT_PUBLIC_API_URL=http://localhost:8000 npm run dev
 ```
 
-Note: Local backend still needs real AWS credentials for S3 access.
-
 ---
 
-## Updating
+## Switching Between Paths
 
-After making code changes:
+The backend code is backend-agnostic. Switch via env vars:
 
-```bash
-# Backend: rebuild and deploy
-./scripts/deploy-backend.sh
+| Component | AWS | Supabase |
+|-----------|-----|----------|
+| Storage | `STORAGE_BACKEND=s3` | `STORAGE_BACKEND=supabase` |
+| Database | `DB_BACKEND=dynamo` | `DB_BACKEND=supabase` |
 
-# Frontend: just push to GitHub — Vercel auto-deploys
-git push origin main
-```
-
----
-
-## Costs Breakdown
-
-| Service | Free Tier | After Free Tier |
-|---------|-----------|----------------|
-| Lambda | 1M requests + 400K GB-s/month | ~$0/month at low volume |
-| API Gateway | 1M calls/month (12 months) | ~$0 |
-| S3 | 5 GB (12 months) | ~$0.50/month |
-| DynamoDB | 25 GB + 25 RCU/WCU | ~$0 |
-| ECR | 500 MB | ~$0 |
-| Vercel | Free hobby tier | $0 |
-| Anthropic API | Pay-per-use | ~$0.05-0.10 per image |
-| **Total** | | **~$1-5/month** |
+You can even mix (e.g. AWS storage with Supabase DB). No code changes needed.
 
 ---
 
 ## Troubleshooting
 
-### "Access Denied" on S3 upload
-Check that the Lambda execution role has S3 permissions. The SAM template handles this automatically.
+### Fly.io deploy fails with "out of memory"
+- Image processing needs ~512MB. Increase memory in `fly.toml`:
+  ```toml
+  [[vm]]
+    memory = "1gb"
+  ```
 
-### CORS errors in browser
-Make sure `CORS_ORIGINS` in the deploy script matches your Vercel URL exactly (including `https://`).
+### Supabase Storage upload 403
+- Check bucket policies: Supabase Dashboard → Storage → Bucket → Policies
+- For simplicity in a single-user app, make the bucket accept writes via your S3 credentials
 
-### Lambda timeout
-Default is 60 seconds. If processing large images takes longer, increase `Timeout` in `infra/template.yaml`.
+### CORS errors
+- Update `CORS_ORIGINS` via `flyctl secrets set` and redeploy
 
-### Docker build fails on M1/M2 Mac
-Add `--platform linux/amd64` to the docker build command in `deploy-backend.sh`:
-```bash
-docker build --platform linux/amd64 -f backend/Dockerfile -t "$IMAGE_TAG" .
-```
+### Frontend build fails on Vercel
+- Make sure **Root Directory** is set to `frontend` in Vercel project settings
 
 ---
 
 ## Tear Down
 
-To remove everything and stop charges:
-
+**Path A (free):**
 ```bash
-# Delete the SAM stack (Lambda, API Gateway, DynamoDB)
-aws cloudformation delete-stack --stack-name etsy-assistant --region us-east-1
-
-# Empty and delete the S3 bucket
-aws s3 rb s3://etsy-assistant-images-ACCOUNT_ID --force
-
-# Delete the ECR repository
-aws ecr delete-repository --repository-name etsy-assistant --force --region us-east-1
+flyctl apps destroy YOUR_FLY_APP_NAME
+# Delete Supabase project from their dashboard
+# Delete Vercel project from their dashboard
 ```
 
-Delete the Vercel project from the Vercel dashboard.
+**Path B (AWS):**
+```bash
+aws cloudformation delete-stack --stack-name etsy-assistant --region us-east-1
+aws s3 rb s3://etsy-assistant-images-ACCOUNT_ID --force
+aws ecr delete-repository --repository-name etsy-assistant --force --region us-east-1
+```
